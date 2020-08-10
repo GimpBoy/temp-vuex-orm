@@ -1,4 +1,4 @@
-import { Store, Module, MutationTree } from 'vuex'
+import { Module, MutationTree, Store } from 'vuex'
 import { mapValues } from '../support/Utils'
 import Schema from '../schema/Schema'
 import Schemas from '../schema/Schemas'
@@ -57,6 +57,16 @@ export default class Database {
   isStarted: boolean = false
 
   /**
+   * A dictionary lookup for entities based on entity name
+   */
+  entitiesDictionary: number[] =[];
+
+  /**
+   * A dictionary lookup for base entity based on entity name
+   */
+  baseEntitiesDictionary: number[] = [];
+
+  /**
    * Initialize the database before a user can start using it.
    */
   start(store: Store<any>, namespace: string): void {
@@ -84,7 +94,10 @@ export default class Database {
       module
     }
 
-    this.entities.push(entity)
+    let entityId = this.entities.push(entity) -1;
+
+    this.linkModel(entity, entityId);
+    this.linkBaseModel(entity);
 
     if (this.isStarted) {
       this.registerModule(entity)
@@ -92,6 +105,12 @@ export default class Database {
     }
   }
 
+  linkModel(entity : Entity, id : number){
+    this.entitiesDictionary[entity.name] = id;
+  }
+  linkBaseModel(entity : Entity){
+    this.baseEntitiesDictionary[entity.name] = this.entitiesDictionary[entity.base];
+  }
   /**
    * Get the model of the given name from the entities list.
    */
@@ -99,7 +118,7 @@ export default class Database {
   model(model: string): typeof Model
   model(model: typeof Model | string): typeof Model | string {
     const name = typeof model === 'string' ? model : model.entity
-    const m = this.models()[name]
+    const m = this.entities[this.entitiesDictionary[name]]
 
     if (!m) {
       throw new Error(
@@ -108,7 +127,7 @@ export default class Database {
       )
     }
 
-    return m
+    return m.model
   }
 
   /**
@@ -118,7 +137,7 @@ export default class Database {
   baseModel(model: string): typeof Model
   baseModel(model: typeof Model | string): typeof Model | string {
     const name = typeof model === 'string' ? model : model.entity
-    const m = this.baseModels()[name]
+    const m = this.entities[this.baseEntitiesDictionary[name]];
 
     if (!m) {
       throw new Error(
@@ -127,7 +146,7 @@ export default class Database {
       )
     }
 
-    return m
+    return m.model
   }
 
   /**
