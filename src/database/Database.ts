@@ -59,12 +59,12 @@ export default class Database {
   /**
    * A dictionary lookup for entities based on entity name
    */
-  entitiesDictionary: number[] =[];
+  entitiesDictionary: number[] = []
 
   /**
    * A dictionary lookup for base entity based on entity name
    */
-  baseEntitiesDictionary: number[] = [];
+  baseEntitiesDictionary: number[] = []
 
   /**
    * Initialize the database before a user can start using it.
@@ -94,10 +94,10 @@ export default class Database {
       module
     }
 
-    let entityId = this.entities.push(entity) -1;
+    let entityId = this.entities.push(entity) - 1
 
-    this.linkModel(entity, entityId);
-    this.linkBaseModel(entity);
+    this.linkModel(entity, entityId)
+    this.linkBaseModel(entity)
 
     if (this.isStarted) {
       this.registerModule(entity)
@@ -105,11 +105,23 @@ export default class Database {
     }
   }
 
-  linkModel(entity : Entity, id : number){
-    this.entitiesDictionary[entity.name] = id;
+  /**
+   * create entitiesDirectory for entity
+   * @param entity
+   * @param id
+   */
+  linkModel(entity: Entity, id: number) {
+    this.entitiesDictionary[entity.name] = id
   }
-  linkBaseModel(entity : Entity){
-    this.baseEntitiesDictionary[entity.name] = this.entitiesDictionary[entity.base];
+
+  /**
+   * Create baseEntitiesDictionary for entity
+   * @param entity
+   */
+  linkBaseModel(entity: Entity) {
+    this.baseEntitiesDictionary[entity.name] = this.entitiesDictionary[
+      entity.base
+    ]
   }
   /**
    * Get the model of the given name from the entities list.
@@ -137,7 +149,7 @@ export default class Database {
   baseModel(model: string): typeof Model
   baseModel(model: typeof Model | string): typeof Model | string {
     const name = typeof model === 'string' ? model : model.entity
-    const m = this.entities[this.baseEntitiesDictionary[name]];
+    const m = this.entities[this.baseEntitiesDictionary[name]]
 
     if (!m) {
       throw new Error(

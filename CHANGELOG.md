@@ -1,3 +1,12 @@
+## [0.36.6](https://github.com/vuex-orm/vuex-orm/compare/v0.36.3...v0.36.6) (2020-08-10)
+
+
+### Bug Fixes
+
+* `withAll` should observe constraints ([f3fdf02](https://github.com/vuex-orm/vuex-orm/commit/f3fdf02cb2a41791073dd8835b408b68ccab03d7))
+
+
+
 ## [0.36.3](https://github.com/vuex-orm/vuex-orm/compare/v0.36.2...v0.36.3) (2020-03-12)
 
 
