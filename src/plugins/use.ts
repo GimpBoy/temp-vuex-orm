@@ -13,6 +13,7 @@ import HasMany from '../attributes/relations/HasMany'
 import HasManyBy from '../attributes/relations/HasManyBy'
 import BelongsToMany from '../attributes/relations/BelongsToMany'
 import HasManyThrough from '../attributes/relations/HasManyThrough'
+import HasOneThrough from '../attributes/relations/HasOneThrough'
 import MorphTo from '../attributes/relations/MorphTo'
 import MorphOne from '../attributes/relations/MorphOne'
 import MorphMany from '../attributes/relations/MorphMany'
@@ -48,6 +49,7 @@ export interface PluginComponents {
   BelongsToMany: typeof BelongsToMany
   HasManyThrough: typeof HasManyThrough
   MorphTo: typeof MorphTo
+  HasOneThrough: typeof HasOneThrough
   MorphOne: typeof MorphOne
   MorphMany: typeof MorphMany
   MorphToMany: typeof MorphToMany
@@ -88,6 +90,7 @@ export default function(plugin: Plugin, options: Options = {}): void {
     HasManyBy,
     BelongsToMany,
     HasManyThrough,
+    HasOneThrough,
     MorphTo,
     MorphOne,
     MorphMany,

@@ -11,6 +11,7 @@ import BelongsTo from './relations/BelongsTo'
 import HasMany from './relations/HasMany'
 import HasManyBy from './relations/HasManyBy'
 import HasManyThrough from './relations/HasManyThrough'
+import HasOneThrough from './relations/HasOneThrough'
 import BelongsToMany from './relations/BelongsToMany'
 import MorphTo from './relations/MorphTo'
 import MorphOne from './relations/MorphOne'
@@ -32,6 +33,7 @@ export {
   HasMany,
   HasManyBy,
   HasManyThrough,
+  HasOneThrough,
   BelongsToMany,
   MorphTo,
   MorphOne,

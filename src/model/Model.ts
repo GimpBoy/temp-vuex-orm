@@ -194,6 +194,29 @@ export default class Model {
   }
 
   /**
+   * Create a has one through relationship.
+   200
+   */
+  static hasOneThrough(
+    related: typeof Model | string,
+    through: typeof Model | string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string
+  ): Attributes.HasOneThrough {
+    return new Attributes.HasOneThrough(
+      this,
+      related,
+      through,
+      firstKey,
+      secondKey,
+      this.localKey(localKey),
+      this.relation(through).localKey(secondLocalKey)
+    )
+  }
+
+/**
    * Create a has many through relationship.
    */
   static hasManyThrough(
