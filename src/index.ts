@@ -21,6 +21,7 @@ import HasMany from './attributes/relations/HasMany'
 import HasManyBy from './attributes/relations/HasManyBy'
 import BelongsToMany from './attributes/relations/BelongsToMany'
 import HasManyThrough from './attributes/relations/HasManyThrough'
+import HasOneThrough from './attributes/relations/HasOneThrough'
 import MorphTo from './attributes/relations/MorphTo'
 import MorphOne from './attributes/relations/MorphOne'
 import MorphMany from './attributes/relations/MorphMany'
@@ -63,6 +64,7 @@ export interface VuexORM {
   Uid: typeof Uid
   Relation: typeof Relation
   HasOne: typeof HasOne
+  HasOneThrough: typeof HasOneThrough
   BelongsTo: typeof BelongsTo
   HasMany: typeof HasMany
   HasManyBy: typeof HasManyBy
@@ -98,6 +100,7 @@ export {
   Uid,
   Relation,
   HasOne,
+  HasOneThrough,
   BelongsTo,
   HasMany,
   HasManyBy,
