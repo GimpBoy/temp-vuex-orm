@@ -2284,6 +2284,47 @@ var VuexORM = (function () {
 	    return MorphMany;
 	}(Relation));
 
+	var IdAttribute = /** @class */ (function () {
+	    function IdAttribute() {
+	    }
+	    /**
+	     * Creates a closure that generates the required id's for an entity.
+	     */
+	    IdAttribute.create = function (model) {
+	        var _this = this;
+	        return function (value, _parentValue, _key) {
+	            _this.generateIds(value, model);
+	            var indexId = _this.generateIndexId(value, model);
+	            return indexId;
+	        };
+	    };
+	    /**
+	     * Generate a field that is defined as primary keys. For keys with a proper
+	     * value set, it will do nothing. If a key is missing, it will generate
+	     * UID for it.
+	     */
+	    IdAttribute.generateIds = function (record, model) {
+	        var keys = isArray(model.primaryKey)
+	            ? model.primaryKey
+	            : [model.primaryKey];
+	        keys.forEach(function (k) {
+	            if (record[k] !== undefined && record[k] !== null) {
+	                return;
+	            }
+	            var attr = model.getFields()[k];
+	            record[k] = attr instanceof Uid$1 ? attr.make() : Uid.make();
+	        });
+	    };
+	    /**
+	     * Generate index id field (which is `$id`) and attach to the given record.
+	     */
+	    IdAttribute.generateIndexId = function (record, model) {
+	        record.$id = model.getIndexIdFromRecord(record);
+	        return record.$id;
+	    };
+	    return IdAttribute;
+	}());
+
 	var MorphToMany = /** @class */ (function (_super) {
 	    __extends(MorphToMany, _super);
 	    /**
@@ -2415,15 +2456,18 @@ var VuexORM = (function () {
 	            var _a, _b;
 	            var parentId = record[_this.parentKey];
 	            var relatedId = data[_this.related.entity][id][_this.relatedKey];
-	            var pivotKey = parentId + "_" + id + "_" + parent.entity;
-	            // Prefer the pivot stashed by Normalizer.extractPivots() onto the parent
-	            // record before normalizr collapsed shared related entities. Falling back
-	            // to the entity-level pivot handles cases where a single entity appears
-	            // under only one parent (no collision) or legacy callers.
+	            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
+	            // collapsed shared related entities (fixes last-write-wins overwrite).
 	            var pivotData = (record.__pivots && record.__pivots[id]) ||
 	                data[_this.related.entity][id][_this.pivotKey] ||
 	                {};
-	            data[_this.pivot.entity] = __assign(__assign({}, data[_this.pivot.entity]), (_a = {}, _a[pivotKey] = __assign(__assign({}, pivotData), (_b = { $id: pivotKey }, _b[_this.relatedId] = relatedId, _b[_this.id] = parentId, _b[_this.type] = parent.entity, _b)), _a));
+	            var mergedPivot = __assign(__assign({}, pivotData), (_a = {}, _a[_this.relatedId] = relatedId, _a[_this.id] = parentId, _a[_this.type] = parent.entity, _a));
+	            // Use the pivot model's primaryKey to generate $id — the same logic
+	            // normalizr's idAttribute uses. This ensures pivot records are keyed
+	            // consistently whether the relation is traversed from the morphToMany
+	            // or morphedByMany direction, preventing duplicate store entries.
+	            var pivotId = IdAttribute.create(_this.pivot)(mergedPivot, null, '');
+	            data[_this.pivot.entity] = __assign(__assign({}, data[_this.pivot.entity]), (_b = {}, _b[pivotId] = mergedPivot, _b));
 	        });
 	    };
 	    return MorphToMany;
@@ -2554,9 +2598,18 @@ var VuexORM = (function () {
 	        related.forEach(function (id) {
 	            var _a, _b;
 	            var parentId = record[_this.parentKey];
-	            var pivotKey = id + "_" + parentId + "_" + _this.related.entity;
-	            var pivotData = data[_this.related.entity][id][_this.pivotKey] || {};
-	            data[_this.pivot.entity] = __assign(__assign({}, data[_this.pivot.entity]), (_a = {}, _a[pivotKey] = __assign(__assign({}, pivotData), (_b = { $id: pivotKey }, _b[_this.relatedId] = parentId, _b[_this.id] = _this.model.getIdFromRecord(data[_this.related.entity][id]), _b[_this.type] = _this.related.entity, _b)), _a));
+	            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
+	            // collapsed shared related entities (fixes last-write-wins overwrite).
+	            var pivotData = (record.__pivots && record.__pivots[id]) ||
+	                data[_this.related.entity][id][_this.pivotKey] ||
+	                {};
+	            var mergedPivot = __assign(__assign({}, pivotData), (_a = {}, _a[_this.relatedId] = parentId, _a[_this.id] = _this.model.getIdFromRecord(data[_this.related.entity][id]), _a[_this.type] = _this.related.entity, _a));
+	            // Use the pivot model's primaryKey to generate $id — the same logic
+	            // normalizr's idAttribute uses. This ensures pivot records are keyed
+	            // consistently whether the relation is traversed from the morphedByMany
+	            // or morphToMany direction, preventing duplicate store entries.
+	            var pivotId = IdAttribute.create(_this.pivot)(mergedPivot, null, '');
+	            data[_this.pivot.entity] = __assign(__assign({}, data[_this.pivot.entity]), (_b = {}, _b[pivotId] = mergedPivot, _b));
 	        });
 	    };
 	    return MorphedByMany;
@@ -5810,47 +5863,6 @@ var VuexORM = (function () {
 	    insertRecords: insertRecords,
 	    delete: destroy$2
 	};
-
-	var IdAttribute = /** @class */ (function () {
-	    function IdAttribute() {
-	    }
-	    /**
-	     * Creates a closure that generates the required id's for an entity.
-	     */
-	    IdAttribute.create = function (model) {
-	        var _this = this;
-	        return function (value, _parentValue, _key) {
-	            _this.generateIds(value, model);
-	            var indexId = _this.generateIndexId(value, model);
-	            return indexId;
-	        };
-	    };
-	    /**
-	     * Generate a field that is defined as primary keys. For keys with a proper
-	     * value set, it will do nothing. If a key is missing, it will generate
-	     * UID for it.
-	     */
-	    IdAttribute.generateIds = function (record, model) {
-	        var keys = isArray(model.primaryKey)
-	            ? model.primaryKey
-	            : [model.primaryKey];
-	        keys.forEach(function (k) {
-	            if (record[k] !== undefined && record[k] !== null) {
-	                return;
-	            }
-	            var attr = model.getFields()[k];
-	            record[k] = attr instanceof Uid$1 ? attr.make() : Uid.make();
-	        });
-	    };
-	    /**
-	     * Generate index id field (which is `$id`) and attach to the given record.
-	     */
-	    IdAttribute.generateIndexId = function (record, model) {
-	        record.$id = model.getIndexIdFromRecord(record);
-	        return record.$id;
-	    };
-	    return IdAttribute;
-	}());
 
 	var Schema = /** @class */ (function () {
 	    /**

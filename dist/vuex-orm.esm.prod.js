@@ -2122,6 +2122,43 @@ class MorphMany extends Relation {
     }
 }
 
+class IdAttribute {
+    /**
+     * Creates a closure that generates the required id's for an entity.
+     */
+    static create(model) {
+        return (value, _parentValue, _key) => {
+            this.generateIds(value, model);
+            const indexId = this.generateIndexId(value, model);
+            return indexId;
+        };
+    }
+    /**
+     * Generate a field that is defined as primary keys. For keys with a proper
+     * value set, it will do nothing. If a key is missing, it will generate
+     * UID for it.
+     */
+    static generateIds(record, model) {
+        const keys = isArray(model.primaryKey)
+            ? model.primaryKey
+            : [model.primaryKey];
+        keys.forEach((k) => {
+            if (record[k] !== undefined && record[k] !== null) {
+                return;
+            }
+            const attr = model.getFields()[k];
+            record[k] = attr instanceof Uid$1 ? attr.make() : Uid.make();
+        });
+    }
+    /**
+     * Generate index id field (which is `$id`) and attach to the given record.
+     */
+    static generateIndexId(record, model) {
+        record.$id = model.getIndexIdFromRecord(record);
+        return record.$id;
+    }
+}
+
 class MorphToMany extends Relation {
     /**
      * Create a new belongs to instance.
@@ -2246,23 +2283,25 @@ class MorphToMany extends Relation {
         related.forEach((id) => {
             const parentId = record[this.parentKey];
             const relatedId = data[this.related.entity][id][this.relatedKey];
-            const pivotKey = `${parentId}_${id}_${parent.entity}`;
-            // Prefer the pivot stashed by Normalizer.extractPivots() onto the parent
-            // record before normalizr collapsed shared related entities. Falling back
-            // to the entity-level pivot handles cases where a single entity appears
-            // under only one parent (no collision) or legacy callers.
+            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
+            // collapsed shared related entities (fixes last-write-wins overwrite).
             const pivotData = (record.__pivots && record.__pivots[id]) ||
                 data[this.related.entity][id][this.pivotKey] ||
                 {};
+            const mergedPivot = {
+                ...pivotData,
+                [this.relatedId]: relatedId,
+                [this.id]: parentId,
+                [this.type]: parent.entity
+            };
+            // Use the pivot model's primaryKey to generate $id — the same logic
+            // normalizr's idAttribute uses. This ensures pivot records are keyed
+            // consistently whether the relation is traversed from the morphToMany
+            // or morphedByMany direction, preventing duplicate store entries.
+            const pivotId = IdAttribute.create(this.pivot)(mergedPivot, null, '');
             data[this.pivot.entity] = {
                 ...data[this.pivot.entity],
-                [pivotKey]: {
-                    ...pivotData,
-                    $id: pivotKey,
-                    [this.relatedId]: relatedId,
-                    [this.id]: parentId,
-                    [this.type]: parent.entity
-                }
+                [pivotId]: mergedPivot
             };
         });
     }
@@ -2386,17 +2425,25 @@ class MorphedByMany extends Relation {
     createPivotRecord(data, record, related) {
         related.forEach((id) => {
             const parentId = record[this.parentKey];
-            const pivotKey = `${id}_${parentId}_${this.related.entity}`;
-            const pivotData = data[this.related.entity][id][this.pivotKey] || {};
+            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
+            // collapsed shared related entities (fixes last-write-wins overwrite).
+            const pivotData = (record.__pivots && record.__pivots[id]) ||
+                data[this.related.entity][id][this.pivotKey] ||
+                {};
+            const mergedPivot = {
+                ...pivotData,
+                [this.relatedId]: parentId,
+                [this.id]: this.model.getIdFromRecord(data[this.related.entity][id]),
+                [this.type]: this.related.entity
+            };
+            // Use the pivot model's primaryKey to generate $id — the same logic
+            // normalizr's idAttribute uses. This ensures pivot records are keyed
+            // consistently whether the relation is traversed from the morphedByMany
+            // or morphToMany direction, preventing duplicate store entries.
+            const pivotId = IdAttribute.create(this.pivot)(mergedPivot, null, '');
             data[this.pivot.entity] = {
                 ...data[this.pivot.entity],
-                [pivotKey]: {
-                    ...pivotData,
-                    $id: pivotKey,
-                    [this.relatedId]: parentId,
-                    [this.id]: this.model.getIdFromRecord(data[this.related.entity][id]),
-                    [this.type]: this.related.entity
-                }
+                [pivotId]: mergedPivot
             };
         });
     }
@@ -5456,43 +5503,6 @@ const RootMutations = {
     insertRecords,
     delete: destroy$2
 };
-
-class IdAttribute {
-    /**
-     * Creates a closure that generates the required id's for an entity.
-     */
-    static create(model) {
-        return (value, _parentValue, _key) => {
-            this.generateIds(value, model);
-            const indexId = this.generateIndexId(value, model);
-            return indexId;
-        };
-    }
-    /**
-     * Generate a field that is defined as primary keys. For keys with a proper
-     * value set, it will do nothing. If a key is missing, it will generate
-     * UID for it.
-     */
-    static generateIds(record, model) {
-        const keys = isArray(model.primaryKey)
-            ? model.primaryKey
-            : [model.primaryKey];
-        keys.forEach((k) => {
-            if (record[k] !== undefined && record[k] !== null) {
-                return;
-            }
-            const attr = model.getFields()[k];
-            record[k] = attr instanceof Uid$1 ? attr.make() : Uid.make();
-        });
-    }
-    /**
-     * Generate index id field (which is `$id`) and attach to the given record.
-     */
-    static generateIndexId(record, model) {
-        record.$id = model.getIndexIdFromRecord(record);
-        return record.$id;
-    }
-}
 
 class Schema {
     /**

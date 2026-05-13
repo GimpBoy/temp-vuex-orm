@@ -5,6 +5,7 @@ import { Record, Records, NormalizedData, Collection } from '../../data'
 import Model from '../../model/Model'
 import Query from '../../query/Query'
 import Constraint from '../../query/contracts/RelationshipConstraint'
+import IdAttribute from '../../schema/IdAttribute'
 import Relation from './Relation'
 
 export type Entity = typeof Model | string
@@ -229,19 +230,30 @@ export default class MorphedByMany extends Relation {
   ): void {
     related.forEach((id) => {
       const parentId = record[this.parentKey]
-      const pivotKey = `${id}_${parentId}_${this.related.entity}`
-      const pivotData = data[this.related.entity][id][this.pivotKey] || {}
+
+      // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
+      // collapsed shared related entities (fixes last-write-wins overwrite).
+      const pivotData =
+        (record.__pivots && record.__pivots[id]) ||
+        data[this.related.entity][id][this.pivotKey] ||
+        {}
+
+      const mergedPivot: Record = {
+        ...pivotData,
+        [this.relatedId]: parentId,
+        [this.id]: this.model.getIdFromRecord(data[this.related.entity][id]),
+        [this.type]: this.related.entity
+      }
+
+      // Use the pivot model's primaryKey to generate $id — the same logic
+      // normalizr's idAttribute uses. This ensures pivot records are keyed
+      // consistently whether the relation is traversed from the morphedByMany
+      // or morphToMany direction, preventing duplicate store entries.
+      const pivotId = IdAttribute.create(this.pivot)(mergedPivot, null, '')
 
       data[this.pivot.entity] = {
         ...data[this.pivot.entity],
-
-        [pivotKey]: {
-          ...pivotData,
-          $id: pivotKey,
-          [this.relatedId]: parentId,
-          [this.id]: this.model.getIdFromRecord(data[this.related.entity][id]),
-          [this.type]: this.related.entity
-        }
+        [pivotId]: mergedPivot
       }
     })
   }
