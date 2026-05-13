@@ -94,8 +94,13 @@ export default class Model {
      */
     static hasManyBy(parent: typeof Model | string, foreignKey: string, ownerKey?: string): Attributes.HasManyBy;
     /**
-     * Create a has many through relationship.
+     * Create a has one through relationship.
+     200
      */
+    static hasOneThrough(related: typeof Model | string, through: typeof Model | string, firstKey: string, secondKey: string, localKey?: string, secondLocalKey?: string): Attributes.HasOneThrough;
+    /**
+       * Create a has many through relationship.
+       */
     static hasManyThrough(related: typeof Model | string, through: typeof Model | string, firstKey: string, secondKey: string, localKey?: string, secondLocalKey?: string): Attributes.HasManyThrough;
     /**
      * Create a belongs to many relationship.

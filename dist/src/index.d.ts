@@ -20,6 +20,7 @@ import HasMany from './attributes/relations/HasMany';
 import HasManyBy from './attributes/relations/HasManyBy';
 import BelongsToMany from './attributes/relations/BelongsToMany';
 import HasManyThrough from './attributes/relations/HasManyThrough';
+import HasOneThrough from './attributes/relations/HasOneThrough';
 import MorphTo from './attributes/relations/MorphTo';
 import MorphOne from './attributes/relations/MorphOne';
 import MorphMany from './attributes/relations/MorphMany';
@@ -61,6 +62,7 @@ export interface VuexORM {
     Uid: typeof Uid;
     Relation: typeof Relation;
     HasOne: typeof HasOne;
+    HasOneThrough: typeof HasOneThrough;
     BelongsTo: typeof BelongsTo;
     HasMany: typeof HasMany;
     HasManyBy: typeof HasManyBy;
@@ -78,6 +80,6 @@ export interface VuexORM {
     RootMutations: RootMutationsContract;
     Query: typeof Query;
 }
-export { install, use, PluginComponents, Container, Database, Model, Fields, Attribute, Type, Attr, String, Number, Boolean, Uid, Relation, HasOne, BelongsTo, HasMany, HasManyBy, BelongsToMany, HasManyThrough, MorphTo, MorphOne, MorphMany, MorphToMany, MorphedByMany, Getters, Actions, RootGetters, RootActions, RootMutations, Query, Record, Records, NormalizedData, Instance, Instances, InstanceOf, Entities, Item, Collection, Collections };
+export { install, use, PluginComponents, Container, Database, Model, Fields, Attribute, Type, Attr, String, Number, Boolean, Uid, Relation, HasOne, HasOneThrough, BelongsTo, HasMany, HasManyBy, BelongsToMany, HasManyThrough, MorphTo, MorphOne, MorphMany, MorphToMany, MorphedByMany, Getters, Actions, RootGetters, RootActions, RootMutations, Query, Record, Records, NormalizedData, Instance, Instances, InstanceOf, Entities, Item, Collection, Collections };
 declare const _default: VuexORM;
 export default _default;

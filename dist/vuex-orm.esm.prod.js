@@ -1735,6 +1735,79 @@ class HasManyThrough extends Relation {
     }
 }
 
+class HasOneThrough extends Relation {
+    /**
+     * Create a new relation instance.
+     */
+    constructor(model, related, through, firstKey, secondKey, localKey, secondLocalKey) {
+        super(model); /* istanbul ignore next */
+        this.related = this.model.relation(related);
+        this.through = this.model.relation(through);
+        this.firstKey = firstKey;
+        this.secondKey = secondKey;
+        this.localKey = localKey;
+        this.secondLocalKey = secondLocalKey;
+    }
+    /**
+     * Define the normalizr schema for the relation.
+     */
+    define(schema) {
+        return schema.one(this.related);
+    }
+    /**
+     * Since the relation doesn't have a foreign key, there is no relational key
+     * to attach to the given data.
+     */
+    attach(_key, _record, _data) {
+        return;
+    }
+    /**
+     * Convert given value to the appropriate value for the attribute.
+     */
+    make(value, _parent, _key) {
+        return this.makeOneRelation(value, this.related);
+    }
+    /**
+     * Load the relation for the given collection.
+     */
+    load(query, collection, name, constraints) {
+        const relatedQuery = this.getRelation(query, this.related.entity, constraints);
+        const throughQuery = query.newQuery(this.through.entity);
+        this.addEagerConstraintForThrough(throughQuery, collection);
+        const through = throughQuery.get();
+        this.addEagerConstraintForRelated(relatedQuery, through);
+        const related = this.mapThroughRelations(through, relatedQuery);
+        collection.forEach((item) => {
+            const relation = related[item[this.localKey]];
+            item[name] = relation || null;
+        });
+    }
+    /**
+     * Set the constraints for the "through" relation.
+     */
+    addEagerConstraintForThrough(query, collection) {
+        query.where(this.firstKey, this.getKeys(collection, this.localKey));
+    }
+    /**
+     * Set the constraints for the "related" relation.
+     */
+    addEagerConstraintForRelated(query, collection) {
+        query.where(this.secondKey, this.getKeys(collection, this.secondLocalKey));
+    }
+    /**
+     * Create a new indexed map for the "through" relation.
+     */
+    mapThroughRelations(through, relatedQuery) {
+        const relations = this.mapSingleRelations(relatedQuery.get(), this.secondKey);
+        return through.reduce((records, record) => {
+            const id = record[this.firstKey];
+            const related = relations.get(record[this.secondLocalKey]);
+            records[id] = related || null;
+            return records;
+        }, {});
+    }
+}
+
 class BelongsToMany extends Relation {
     /**
      * Create a new belongs to instance.
@@ -2174,7 +2247,13 @@ class MorphToMany extends Relation {
             const parentId = record[this.parentKey];
             const relatedId = data[this.related.entity][id][this.relatedKey];
             const pivotKey = `${parentId}_${id}_${parent.entity}`;
-            const pivotData = data[this.related.entity][id][this.pivotKey] || {};
+            // Prefer the pivot stashed by Normalizer.extractPivots() onto the parent
+            // record before normalizr collapsed shared related entities. Falling back
+            // to the entity-level pivot handles cases where a single entity appears
+            // under only one parent (no collision) or legacy callers.
+            const pivotData = (record.__pivots && record.__pivots[id]) ||
+                data[this.related.entity][id][this.pivotKey] ||
+                {};
             data[this.pivot.entity] = {
                 ...data[this.pivot.entity],
                 [pivotKey]: {
@@ -2475,8 +2554,15 @@ class Model {
         return new HasManyBy(this, parent, foreignKey, this.relation(parent).localKey(ownerKey));
     }
     /**
-     * Create a has many through relationship.
+     * Create a has one through relationship.
+     200
      */
+    static hasOneThrough(related, through, firstKey, secondKey, localKey, secondLocalKey) {
+        return new HasOneThrough(this, related, through, firstKey, secondKey, this.localKey(localKey), this.relation(through).localKey(secondLocalKey));
+    }
+    /**
+       * Create a has many through relationship.
+       */
     static hasManyThrough(related, through, firstKey, secondKey, localKey, secondLocalKey) {
         return new HasManyThrough(this, related, through, firstKey, secondKey, this.localKey(localKey), this.relation(through).localKey(secondLocalKey));
     }
@@ -3700,9 +3786,58 @@ class Normalizer {
         if (Utils.isEmpty(record)) {
             return {};
         }
+        // Pre-extract MorphToMany / MorphedByMany / BelongsToMany pivot data onto
+        // each parent record before normalizr runs its entity deduplication pass.
+        //
+        // The problem: when the same related entity (e.g. QuestionGroup "185b...") is
+        // embedded under multiple parents (e.g. Category "Equipment" and Category "EWP")
+        // in a single API response, normalizr merges them into one record keyed by ID.
+        // The last parent to be processed overwrites the `pivot` field, so PivotCreator
+        // ends up reading the wrong pivot data for every parent except the last one.
+        //
+        // The fix: before normalizr collapses entities, walk the raw records and stash
+        // each related item's pivot under record.__pivots[relatedId] on the PARENT.
+        // PivotCreator reads __pivots first, so it always sees the correct per-parent pivot
+        // regardless of what normalizr did to the shared related entity.
+        const records = Utils.isArray(record) ? record : [record];
+        this.extractPivots(query, records);
         const entity = query.database.schemas[query.model.entity];
         const schema = Utils.isArray(record) ? [entity] : entity;
         return normalize$1(record, schema).entities;
+    }
+    /**
+     * Walk raw records and stash pivot data on each parent record so it survives
+     * normalizr's entity deduplication. After this runs each parent record has:
+     *   record.__pivots = { [relatedEntityId]: pivotObject }
+     *
+     * Only processes fields returned by model.pivotFields() that carry a pivot object
+     * on their related items (BelongsToMany, MorphToMany, MorphedByMany).
+     */
+    static extractPivots(query, records) {
+        const pivotFields = query.model.pivotFields();
+        if (pivotFields.length === 0) {
+            return;
+        }
+        records.forEach((record) => {
+            pivotFields.forEach((fieldMap) => {
+                Object.keys(fieldMap).forEach((key) => {
+                    var _a;
+                    const related = record[key];
+                    if (!Utils.isArray(related)) {
+                        return;
+                    }
+                    const field = fieldMap[key];
+                    const pivotKey = (_a = field.pivotKey) !== null && _a !== void 0 ? _a : 'pivot';
+                    related.forEach((item) => {
+                        if (!item || typeof item !== 'object' || !item.id || !item[pivotKey]) {
+                            return;
+                        }
+                        record.__pivots = record.__pivots || {};
+                        record.__pivots[item.id] = item[pivotKey];
+                    });
+                });
+            });
+        });
     }
 }
 
@@ -5745,6 +5880,7 @@ function use (plugin, options = {}) {
         HasManyBy,
         BelongsToMany,
         HasManyThrough,
+        HasOneThrough,
         MorphTo,
         MorphOne,
         MorphMany,
@@ -5795,4 +5931,4 @@ var index = {
 };
 
 export default index;
-export { Actions, Attr, Attribute, BelongsTo, BelongsToMany, Boolean, Container, Database, Getters, HasMany, HasManyBy, HasManyThrough, HasOne, Model, MorphMany, MorphOne, MorphTo, MorphToMany, MorphedByMany, Number, Query, Relation, RootActions, RootGetters, RootMutations, String$1 as String, Type, Uid$1 as Uid, install, use };
+export { Actions, Attr, Attribute, BelongsTo, BelongsToMany, Boolean, Container, Database, Getters, HasMany, HasManyBy, HasManyThrough, HasOne, HasOneThrough, Model, MorphMany, MorphOne, MorphTo, MorphToMany, MorphedByMany, Number, Query, Relation, RootActions, RootGetters, RootMutations, String$1 as String, Type, Uid$1 as Uid, install, use };

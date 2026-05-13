@@ -1878,6 +1878,84 @@ var VuexORM = (function () {
 	    return HasManyThrough;
 	}(Relation));
 
+	var HasOneThrough = /** @class */ (function (_super) {
+	    __extends(HasOneThrough, _super);
+	    /**
+	     * Create a new relation instance.
+	     */
+	    function HasOneThrough(model, related, through, firstKey, secondKey, localKey, secondLocalKey) {
+	        var _this = _super.call(this, model) /* istanbul ignore next */ || this;
+	        _this.related = _this.model.relation(related);
+	        _this.through = _this.model.relation(through);
+	        _this.firstKey = firstKey;
+	        _this.secondKey = secondKey;
+	        _this.localKey = localKey;
+	        _this.secondLocalKey = secondLocalKey;
+	        return _this;
+	    }
+	    /**
+	     * Define the normalizr schema for the relation.
+	     */
+	    HasOneThrough.prototype.define = function (schema) {
+	        return schema.one(this.related);
+	    };
+	    /**
+	     * Since the relation doesn't have a foreign key, there is no relational key
+	     * to attach to the given data.
+	     */
+	    HasOneThrough.prototype.attach = function (_key, _record, _data) {
+	        return;
+	    };
+	    /**
+	     * Convert given value to the appropriate value for the attribute.
+	     */
+	    HasOneThrough.prototype.make = function (value, _parent, _key) {
+	        return this.makeOneRelation(value, this.related);
+	    };
+	    /**
+	     * Load the relation for the given collection.
+	     */
+	    HasOneThrough.prototype.load = function (query, collection, name, constraints) {
+	        var _this = this;
+	        var relatedQuery = this.getRelation(query, this.related.entity, constraints);
+	        var throughQuery = query.newQuery(this.through.entity);
+	        this.addEagerConstraintForThrough(throughQuery, collection);
+	        var through = throughQuery.get();
+	        this.addEagerConstraintForRelated(relatedQuery, through);
+	        var related = this.mapThroughRelations(through, relatedQuery);
+	        collection.forEach(function (item) {
+	            var relation = related[item[_this.localKey]];
+	            item[name] = relation || null;
+	        });
+	    };
+	    /**
+	     * Set the constraints for the "through" relation.
+	     */
+	    HasOneThrough.prototype.addEagerConstraintForThrough = function (query, collection) {
+	        query.where(this.firstKey, this.getKeys(collection, this.localKey));
+	    };
+	    /**
+	     * Set the constraints for the "related" relation.
+	     */
+	    HasOneThrough.prototype.addEagerConstraintForRelated = function (query, collection) {
+	        query.where(this.secondKey, this.getKeys(collection, this.secondLocalKey));
+	    };
+	    /**
+	     * Create a new indexed map for the "through" relation.
+	     */
+	    HasOneThrough.prototype.mapThroughRelations = function (through, relatedQuery) {
+	        var _this = this;
+	        var relations = this.mapSingleRelations(relatedQuery.get(), this.secondKey);
+	        return through.reduce(function (records, record) {
+	            var id = record[_this.firstKey];
+	            var related = relations.get(record[_this.secondLocalKey]);
+	            records[id] = related || null;
+	            return records;
+	        }, {});
+	    };
+	    return HasOneThrough;
+	}(Relation));
+
 	var BelongsToMany = /** @class */ (function (_super) {
 	    __extends(BelongsToMany, _super);
 	    /**
@@ -2338,7 +2416,13 @@ var VuexORM = (function () {
 	            var parentId = record[_this.parentKey];
 	            var relatedId = data[_this.related.entity][id][_this.relatedKey];
 	            var pivotKey = parentId + "_" + id + "_" + parent.entity;
-	            var pivotData = data[_this.related.entity][id][_this.pivotKey] || {};
+	            // Prefer the pivot stashed by Normalizer.extractPivots() onto the parent
+	            // record before normalizr collapsed shared related entities. Falling back
+	            // to the entity-level pivot handles cases where a single entity appears
+	            // under only one parent (no collision) or legacy callers.
+	            var pivotData = (record.__pivots && record.__pivots[id]) ||
+	                data[_this.related.entity][id][_this.pivotKey] ||
+	                {};
 	            data[_this.pivot.entity] = __assign(__assign({}, data[_this.pivot.entity]), (_a = {}, _a[pivotKey] = __assign(__assign({}, pivotData), (_b = { $id: pivotKey }, _b[_this.relatedId] = relatedId, _b[_this.id] = parentId, _b[_this.type] = parent.entity, _b)), _a));
 	        });
 	    };
@@ -2635,8 +2719,15 @@ var VuexORM = (function () {
 	        return new HasManyBy(this, parent, foreignKey, this.relation(parent).localKey(ownerKey));
 	    };
 	    /**
-	     * Create a has many through relationship.
+	     * Create a has one through relationship.
+	     200
 	     */
+	    Model.hasOneThrough = function (related, through, firstKey, secondKey, localKey, secondLocalKey) {
+	        return new HasOneThrough(this, related, through, firstKey, secondKey, this.localKey(localKey), this.relation(through).localKey(secondLocalKey));
+	    };
+	    /**
+	       * Create a has many through relationship.
+	       */
 	    Model.hasManyThrough = function (related, through, firstKey, secondKey, localKey, secondLocalKey) {
 	        return new HasManyThrough(this, related, through, firstKey, secondKey, this.localKey(localKey), this.relation(through).localKey(secondLocalKey));
 	    };
@@ -3943,9 +4034,58 @@ var VuexORM = (function () {
 	        if (Utils.isEmpty(record)) {
 	            return {};
 	        }
+	        // Pre-extract MorphToMany / MorphedByMany / BelongsToMany pivot data onto
+	        // each parent record before normalizr runs its entity deduplication pass.
+	        //
+	        // The problem: when the same related entity (e.g. QuestionGroup "185b...") is
+	        // embedded under multiple parents (e.g. Category "Equipment" and Category "EWP")
+	        // in a single API response, normalizr merges them into one record keyed by ID.
+	        // The last parent to be processed overwrites the `pivot` field, so PivotCreator
+	        // ends up reading the wrong pivot data for every parent except the last one.
+	        //
+	        // The fix: before normalizr collapses entities, walk the raw records and stash
+	        // each related item's pivot under record.__pivots[relatedId] on the PARENT.
+	        // PivotCreator reads __pivots first, so it always sees the correct per-parent pivot
+	        // regardless of what normalizr did to the shared related entity.
+	        var records = Utils.isArray(record) ? record : [record];
+	        this.extractPivots(query, records);
 	        var entity = query.database.schemas[query.model.entity];
 	        var schema = Utils.isArray(record) ? [entity] : entity;
 	        return normalize$1(record, schema).entities;
+	    };
+	    /**
+	     * Walk raw records and stash pivot data on each parent record so it survives
+	     * normalizr's entity deduplication. After this runs each parent record has:
+	     *   record.__pivots = { [relatedEntityId]: pivotObject }
+	     *
+	     * Only processes fields returned by model.pivotFields() that carry a pivot object
+	     * on their related items (BelongsToMany, MorphToMany, MorphedByMany).
+	     */
+	    Normalizer.extractPivots = function (query, records) {
+	        var pivotFields = query.model.pivotFields();
+	        if (pivotFields.length === 0) {
+	            return;
+	        }
+	        records.forEach(function (record) {
+	            pivotFields.forEach(function (fieldMap) {
+	                Object.keys(fieldMap).forEach(function (key) {
+	                    var _a;
+	                    var related = record[key];
+	                    if (!Utils.isArray(related)) {
+	                        return;
+	                    }
+	                    var field = fieldMap[key];
+	                    var pivotKey = (_a = field.pivotKey) !== null && _a !== void 0 ? _a : 'pivot';
+	                    related.forEach(function (item) {
+	                        if (!item || typeof item !== 'object' || !item.id || !item[pivotKey]) {
+	                            return;
+	                        }
+	                        record.__pivots = record.__pivots || {};
+	                        record.__pivots[item.id] = item[pivotKey];
+	                    });
+	                });
+	            });
+	        });
 	    };
 	    return Normalizer;
 	}());
@@ -6115,6 +6255,7 @@ var VuexORM = (function () {
 	        HasManyBy: HasManyBy,
 	        BelongsToMany: BelongsToMany,
 	        HasManyThrough: HasManyThrough,
+	        HasOneThrough: HasOneThrough,
 	        MorphTo: MorphTo,
 	        MorphOne: MorphOne,
 	        MorphMany: MorphMany,
@@ -6146,6 +6287,7 @@ var VuexORM = (function () {
 	    Uid: Uid$1,
 	    Relation: Relation,
 	    HasOne: HasOne,
+	    HasOneThrough: HasOneThrough,
 	    BelongsTo: BelongsTo,
 	    HasMany: HasMany,
 	    HasManyBy: HasManyBy,

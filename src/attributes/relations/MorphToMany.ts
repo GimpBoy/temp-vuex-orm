@@ -240,7 +240,14 @@ export default class MorphToMany extends Relation {
       const parentId = record[this.parentKey]
       const relatedId = data[this.related.entity][id][this.relatedKey]
       const pivotKey = `${parentId}_${id}_${parent.entity}`
-      const pivotData = data[this.related.entity][id][this.pivotKey] || {}
+      // Prefer the pivot stashed by Normalizer.extractPivots() onto the parent
+      // record before normalizr collapsed shared related entities. Falling back
+      // to the entity-level pivot handles cases where a single entity appears
+      // under only one parent (no collision) or legacy callers.
+      const pivotData =
+        (record.__pivots && record.__pivots[id]) ||
+        data[this.related.entity][id][this.pivotKey] ||
+        {}
 
       data[this.pivot.entity] = {
         ...data[this.pivot.entity],
