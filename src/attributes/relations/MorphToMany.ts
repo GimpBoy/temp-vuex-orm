@@ -243,8 +243,10 @@ export default class MorphToMany extends Relation {
 
       // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
       // collapsed shared related entities (fixes last-write-wins overwrite).
+      // Keyed as __pivots[pivotKey][relatedId] to prevent collisions when the
+      // same parent has multiple pivot relationships using different pivot names.
       const pivotData =
-        (record.__pivots && record.__pivots[id]) ||
+        (record.__pivots && record.__pivots[this.pivotKey] && record.__pivots[this.pivotKey][id]) ||
         data[this.related.entity][id][this.pivotKey] ||
         {}
 

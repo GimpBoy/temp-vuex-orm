@@ -69,7 +69,8 @@ export default class Normalizer {
             }
 
             record.__pivots = record.__pivots || {}
-            record.__pivots[item.id] = item[pivotKey]
+            record.__pivots[pivotKey] = record.__pivots[pivotKey] || {}
+            record.__pivots[pivotKey][item.id] = item[pivotKey]
           })
         })
       })

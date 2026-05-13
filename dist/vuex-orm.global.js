@@ -2458,7 +2458,9 @@ var VuexORM = (function () {
 	            var relatedId = data[_this.related.entity][id][_this.relatedKey];
 	            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
 	            // collapsed shared related entities (fixes last-write-wins overwrite).
-	            var pivotData = (record.__pivots && record.__pivots[id]) ||
+	            // Keyed as __pivots[pivotKey][relatedId] to prevent collisions when the
+	            // same parent has multiple pivot relationships using different pivot names.
+	            var pivotData = (record.__pivots && record.__pivots[_this.pivotKey] && record.__pivots[_this.pivotKey][id]) ||
 	                data[_this.related.entity][id][_this.pivotKey] ||
 	                {};
 	            var mergedPivot = __assign(__assign({}, pivotData), (_a = {}, _a[_this.relatedId] = relatedId, _a[_this.id] = parentId, _a[_this.type] = parent.entity, _a));
@@ -2600,7 +2602,9 @@ var VuexORM = (function () {
 	            var parentId = record[_this.parentKey];
 	            // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
 	            // collapsed shared related entities (fixes last-write-wins overwrite).
-	            var pivotData = (record.__pivots && record.__pivots[id]) ||
+	            // Keyed as __pivots[pivotKey][relatedId] to prevent collisions when the
+	            // same parent has multiple pivot relationships using different pivot names.
+	            var pivotData = (record.__pivots && record.__pivots[_this.pivotKey] && record.__pivots[_this.pivotKey][id]) ||
 	                data[_this.related.entity][id][_this.pivotKey] ||
 	                {};
 	            var mergedPivot = __assign(__assign({}, pivotData), (_a = {}, _a[_this.relatedId] = parentId, _a[_this.id] = _this.model.getIdFromRecord(data[_this.related.entity][id]), _a[_this.type] = _this.related.entity, _a));
@@ -4134,7 +4138,8 @@ var VuexORM = (function () {
 	                            return;
 	                        }
 	                        record.__pivots = record.__pivots || {};
-	                        record.__pivots[item.id] = item[pivotKey];
+	                        record.__pivots[pivotKey] = record.__pivots[pivotKey] || {};
+	                        record.__pivots[pivotKey][item.id] = item[pivotKey];
 	                    });
 	                });
 	            });

@@ -2285,7 +2285,9 @@ class MorphToMany extends Relation {
             const relatedId = data[this.related.entity][id][this.relatedKey];
             // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
             // collapsed shared related entities (fixes last-write-wins overwrite).
-            const pivotData = (record.__pivots && record.__pivots[id]) ||
+            // Keyed as __pivots[pivotKey][relatedId] to prevent collisions when the
+            // same parent has multiple pivot relationships using different pivot names.
+            const pivotData = (record.__pivots && record.__pivots[this.pivotKey] && record.__pivots[this.pivotKey][id]) ||
                 data[this.related.entity][id][this.pivotKey] ||
                 {};
             const mergedPivot = {
@@ -2427,7 +2429,9 @@ class MorphedByMany extends Relation {
             const parentId = record[this.parentKey];
             // Prefer pivot data stashed by Normalizer.extractPivots() before normalizr
             // collapsed shared related entities (fixes last-write-wins overwrite).
-            const pivotData = (record.__pivots && record.__pivots[id]) ||
+            // Keyed as __pivots[pivotKey][relatedId] to prevent collisions when the
+            // same parent has multiple pivot relationships using different pivot names.
+            const pivotData = (record.__pivots && record.__pivots[this.pivotKey] && record.__pivots[this.pivotKey][id]) ||
                 data[this.related.entity][id][this.pivotKey] ||
                 {};
             const mergedPivot = {
@@ -3880,7 +3884,8 @@ class Normalizer {
                             return;
                         }
                         record.__pivots = record.__pivots || {};
-                        record.__pivots[item.id] = item[pivotKey];
+                        record.__pivots[pivotKey] = record.__pivots[pivotKey] || {};
+                        record.__pivots[pivotKey][item.id] = item[pivotKey];
                     });
                 });
             });
